@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(pip uninstall ansible)",
+      "PowerShell(& \".\\\\ansible_venv\\\\Scripts\\\\pip.exe\" uninstall ansible)"
+    ]
+  }
+}
