@@ -1,0 +1,41 @@
+---
+- name: Bootstrap Proxmox for Ansible management
+  hosts: proxmox
+  gather_facts: false
+  vars_prompt:
+    - name: root_password
+      prompt: "Enter Proxmox root password (one-time use)"
+      private: true
+  vars:
+    ansible_user: root
+    ansible_password: "{{ root_password }}"
+    ansible_ssh_common_args: '-o PreferredAuthentications=password'
+  tasks:
+    - name: Copy SSH public key for ansible user
+      ansible.posix.authorized_key:
+        user: root
+        key: "{{ lookup('file', '~/.ssh/ansible_proxmox.pub') }}"
+        state: present
+
+    - name: Create ansible PAM user
+      ansible.builtin.command:
+        cmd: pveum user add ansible@pam
+      register: user_result
+      changed_when: user_result.rc == 0
+      failed_when: user_result.rc != 0 and 'already exists' not in user_result.stderr
+
+    - name: Assign PVEAdmin role
+      ansible.builtin.command:
+        cmd: pveum aclmod / -user ansible@pam -role PVEAdmin
+
+    - name: Create API token
+      ansible.builtin.command:
+        cmd: pveum user token add ansible@pam ansible-token
+      register: token_result
+      changed_when: token_result.rc == 0
+      failed_when: token_result.rc != 0 and 'already exists' not in token_result.stderr
+
+    - name: Show token (save this to vault)
+      ansible.builtin.debug:
+        msg: "{{ token_result.stdout }}"
+      when: token_result.changed

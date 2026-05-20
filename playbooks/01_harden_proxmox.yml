@@ -1,0 +1,112 @@
+---
+- name: Harden Proxmox
+  hosts: proxmox
+  gather_facts: true 
+  become: true  
+  vars:
+    admin_user: administrator
+    ssh_public_key: "{{ lookup('file', '~/.ssh/ansible_proxmox.pub') }}"
+    management_cidr: "10.0.0.0/24"
+
+  tasks:
+    # 1. SSH — create administrator user and disable root login
+    - name: Create administrator user
+      ansible.builtin.user:
+        name: "{{ admin_user }}"
+        shell: /bin/bash
+        groups: sudo
+        append: true
+        state: present
+      when: ansible_user == 'root' 
+
+    - name: Add SSH public key for administrator
+      ansible.posix.authorized_key:
+        user: "{{ admin_user }}"
+        key: "{{ ssh_public_key }}"
+        state: present
+      when: ansible_user == 'root' 
+
+    - name: Install sudo
+      ansible.builtin.apt:
+        name: sudo
+        state: present
+        update_cache: false   
+
+    - name: Grant passwordless sudo
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/administrator
+        content: "administrator ALL=(ALL) NOPASSWD:ALL\n"
+        owner: root
+        group: root
+        mode: "0440"
+        validate: /usr/sbin/visudo -cf %s
+      when: ansible_user == 'root' 
+
+    - name: Disable root SSH login
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PermitRootLogin'
+        line: 'PermitRootLogin no'
+        state: present
+      when: ansible_user == 'root' 
+
+    - name: Disable password authentication
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PasswordAuthentication'
+        line: 'PasswordAuthentication no'
+        state: present
+
+    - name: Enable public key authentication
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PubkeyAuthentication'
+        line: 'PubkeyAuthentication yes'
+        state: present
+
+    - name: Restart SSH
+      ansible.builtin.service:
+        name: ssh
+        state: restarted
+
+    # 2. Configure Proxmox Firewall — datacenter and node levels
+    - name: Write datacenter firewall config (firewall disabled until rules are in place)    
+      ansible.builtin.shell:
+        cmd: |
+          cat > /etc/pve/firewall/cluster.fw << 'FWEOF'
+          [OPTIONS]
+          enable: 0
+          policy_in: DROP
+          policy_out: ACCEPT
+
+          [RULES]
+          IN SSH(ACCEPT) -source {{ management_cidr }} -log nolog
+          IN ACCEPT -p tcp -dport 8006 -source {{ management_cidr }} -log nolog
+          IN ACCEPT -p tcp -dport 111 -log nolog
+          IN ACCEPT -p udp -dport 111 -log nolog
+          IN ACCEPT -p tcp -dport 2049 -log nolog
+          FWEOF
+      changed_when: true
+
+    - name: Write node-level firewall config (disabled — inherits datacenter rules)
+      ansible.builtin.shell:
+        cmd:  |
+          cat > /etc/pve/nodes/{{ ansible_hostname }}/host.fw << 'FWEOF'
+          [OPTIONS]
+          enable: 0
+          FWEOF
+      changed_when: true
+
+    - name: Enable datacenter firewall
+      ansible.builtin.shell:
+        cmd: >-
+          python3 -c "p='/etc/pve/firewall/cluster.fw';
+          open(p,'w').write(open(p).read().replace('enable: 0','enable: 1',1))"
+      changed_when: true
+
+    - name: Enable node firewall
+      ansible.builtin.shell:
+        cmd: >-
+          python3 -c "p='/etc/pve/nodes/{{ ansible_hostname }}/host.fw';
+          open(p,'w').write(open(p).read().replace('enable: 0','enable: 1',1))"
+      changed_when: true

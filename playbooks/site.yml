@@ -1,0 +1,8 @@
+---
+- name: Verify Proxmox connectivity
+  hosts: proxmox
+  gather_facts: true
+  tasks:
+    - name: Print hostname
+      ansible.builtin.debug:
+        msg: "Connected to {{ inventory_hostname }} running {{ ansible_distribution }} {{ ansible_distribution_version }}"
