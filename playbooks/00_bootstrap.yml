@@ -40,7 +40,11 @@
         msg: "{{ token_result.stdout }}"
       when: token_result.changed
 
+<<<<<<< HEAD
     # Hostname configuration
+=======
+      # Hostname configuration
+>>>>>>> 2031198e734698507c5b224b68c65cb1dadda611
     - name: Set system hostname
       ansible.builtin.hostname:
         name: "{{ proxmox_hostname }}"
@@ -58,4 +62,8 @@
         path: /etc/hosts
         regexp: '^{{ ansible_host }}\s+'
         line: "{{ ansible_host }} {{ proxmox_hostname }}.local {{ proxmox_hostname }}"
+<<<<<<< HEAD
         state: present
+=======
+        state: present                                                                                                                                                                             
+>>>>>>> 2031198e734698507c5b224b68c65cb1dadda611
