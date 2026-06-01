@@ -49,6 +49,31 @@
         msg: "{{ token_result.stdout }}"
       when: token_result.changed
 
+    ##Setup terraform user
+    - name: Create terraform@pve user
+      ansible.builtin.command:
+        cmd: pveum user add terraform@pve
+      register: user_result1
+      changed_when: user_result1.rc == 0
+      failed_when: user_result1.rc != 0 and 'already exists' not in user_result.stderr
+
+    - name: Assign PVEAdmin role to terraform@pve
+      ansible.builtin.command:
+        cmd: pveum aclmod / -user terraform@pve -role PVEAdmin
+      changed_when: true
+
+    - name: Create terraform API token
+      ansible.builtin.command:
+        cmd: pveum user token add terraform@pve tf-token --privsep=0
+      register: token_result1
+      changed_when: token_result1.rc == 0
+      failed_when: token_result1.rc != 0 and 'already exists' not in token_result.stderr
+
+    - name: Show token secret — save this to vault
+      ansible.builtin.debug:
+        msg: "{{ token_result1.stdout }}"
+      when: token_result1.changed
+
     # Hostname configuration
     - name: Set system hostname
       ansible.builtin.hostname:
