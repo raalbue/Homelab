@@ -50,6 +50,11 @@ ansible-playbook playbooks/00_bootstrap.yml
 ansible-vault create inventory/group_vars/proxmox/vault.yml (First time use only)
 ansible-vault edit inventory/group_vars/proxmox/vault.yml (Second time and on)
 
+## Force Creation
+if you want to force the creation of your tokens
+backup the vault.yml file located in the inventory/group_vars/proxmox
+mv inventory/group_vars/proxmox inventory/group_vars/proxmox vault.yml.back
+
 Validate that the ansible user is root
 through inventory/hosts.yml
 all:
@@ -105,3 +110,15 @@ ssh pve-hagrid
 Test:
 ansible-playbook playbooks/site.yml
 ```
+## IONOS API key
+(? .back) ls -la
+ansible-vault edit inventory/group_vars/proxmox/vault.yml
+add the following at the bottom:
+vault_acme_dns_credentials: "IONOS_PREFIX=<key>\nIONOS_SECRET=<key>="
+
+## 02_update_proxmox
+To run the update_proxmox.yml
+do ansible-playbook playbooks/02_update_proxmox.yml
+
+the code will produce these results: adds a ssl certificate, uploads the pfsense iso and windows iso to proxmox
+
