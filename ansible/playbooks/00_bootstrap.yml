@@ -26,6 +26,16 @@
         key: "{{ lookup('file', '~/.ssh/ansible_proxmox.pub') }}"
         state: present
 
+    - name: Check if vault.yml already exists
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../inventory/group_vars/proxmox/vault.yml"
+      delegate_to: localhost
+      register: vault_file
+
+        ##- name: Create and configure ansible PAM user
+        ##when: not vault_file.stat.exists
+        ##block:      
+
     - name: Create ansible PAM user
       ansible.builtin.command:
         cmd: pveum user add ansible@pam
