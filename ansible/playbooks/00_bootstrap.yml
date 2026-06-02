@@ -32,10 +32,6 @@
       delegate_to: localhost
       register: vault_file
 
-        ##- name: Create and configure ansible PAM user
-        ##when: not vault_file.stat.exists
-        ##block:      
-
     - name: Create ansible PAM user
       ansible.builtin.command:
         cmd: pveum user add ansible@pam
@@ -47,9 +43,14 @@
       ansible.builtin.command:
         cmd: pveum aclmod / -user ansible@pam -role PVEAdmin
 
+    - name: Delete existing ansible API token
+      ansible.builtin.command:
+        cmd: pveum user token remove ansible@pam ansible-token
+      failed_when: false
+
     - name: Create API token
       ansible.builtin.command:
-        cmd: pveum user token add ansible@pam ansible-token
+        cmd: pveum user token add ansible@pam ansible-token --output-format json
       register: token_result
       changed_when: token_result.rc == 0
       failed_when: token_result.rc != 0 and 'already exists' not in token_result.stderr
@@ -65,24 +66,78 @@
         cmd: pveum user add terraform@pve
       register: user_result1
       changed_when: user_result1.rc == 0
-      failed_when: user_result1.rc != 0 and 'already exists' not in user_result.stderr
+      failed_when: user_result1.rc != 0 and 'already exists' not in user_result1.stderr
 
     - name: Assign PVEAdmin role to terraform@pve
       ansible.builtin.command:
         cmd: pveum aclmod / -user terraform@pve -role PVEAdmin
       changed_when: true
 
+    - name: Delete existing terraform API token
+      ansible.builtin.command:
+        cmd: pveum user token remove terraform@pve tf-token 
+      failed_when: false
+
     - name: Create terraform API token
       ansible.builtin.command:
-        cmd: pveum user token add terraform@pve tf-token --privsep=0
+        cmd: pveum user token add terraform@pve tf-token --privsep=0  --output-format json
       register: token_result1
       changed_when: token_result1.rc == 0
-      failed_when: token_result1.rc != 0 and 'already exists' not in token_result.stderr
+      failed_when: token_result1.rc != 0 and 'already exists' not in token_result1.stderr
 
     - name: Show token secret — save this to vault
       ansible.builtin.debug:
         msg: "{{ token_result1.stdout }}"
       when: token_result1.changed
+
+    - name: Debug token output
+      ansible.builtin.debug:
+        var: token_result.stdout
+
+      #writing token settings to vault.yml
+    - name: Write token to vault file
+      delegate_to: localhost
+      become: false
+      when: not vault_file.stat.exists
+      block:
+        - name: Write plain vault content
+          ansible.builtin.copy:
+            dest: "{{ playbook_dir }}/../inventory/group_vars/proxmox/vault.yml"
+            content: |
+              vault_proxmox_api_token_id: "{{ (token_result.stdout | from_json)['full-tokenid'] }}"
+              vault_proxmox_api_token_secret: "{{ (token_result.stdout | from_json)['value'] }}"
+              tfvar_vault_proxmox_api_token_id: "{{ (token_result1.stdout | from_json)['full-tokenid'] }}"
+              tfvar_vault_proxmox_api_token_secret: "{{ (token_result1.stdout | from_json)['value'] }}"
+            mode: "0600"
+          no_log: true
+
+        - name: Encrypt vault file in place
+          ansible.builtin.command:
+            argv:
+              - ansible-vault
+              - encrypt
+              - --vault-password-file
+              - "{{ playbook_dir }}/../.vault_password"
+              - "{{ playbook_dir }}/../inventory/group_vars/proxmox/vault.yml"
+
+          #- name: Write token to vault file
+          #when: not vault_file.stat.exists
+          #block:
+          #- name: Build vault payload
+          #delegate_to: localhost
+          #become: false
+          #ansible.builtin.set_fact:
+          #  vault_payload:
+          #    proxmox_api_url: "https://{{ ansible_host }}:8006/api2/json"
+          #    proxmox_api_token_id: "{{ (token_result.stdout | from_json)['full-tokenid'] }}"
+          #    proxmox_api_token_secret: "{{ (token_result.stdout | from_json)['value'] }}"
+          #- name: Encrypt and write
+          #delegate_to: localhost
+          #become: false
+          #ansible.builtin.copy: |
+          #  content: "{{ vault_payload | to_nice_yaml }}"
+          #  dest: "{{ playbook_dir }}/../inventory/group_vars/proxmox/vault.yml"
+          #no_log: true
 
     # Hostname configuration
     - name: Set system hostname
